@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Tracker Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start p-4 sm:p-8 bg-gradient-to-br from-sky-100 to-blue-50 overflow-y-auto">
+    <div id="homePage" class="w-full max-w-4xl py-16">
+        <div class="text-center">
+            <h1 class="text-3xl sm:text-5xl font-bold text-indigo-700 mb-4">Welcome to Gym Tracker</h1>
+            <p class="text-lg sm:text-xl text-gray-600 mb-8">Your personal web app to record workouts, track progress, and visualize gains.</p>
+            <button onclick="showTracker()" class="bg-indigo-600 text-white px-6 py-3 sm:px-8 sm:py-4 rounded-lg text-base sm:text-lg font-semibold hover:bg-indigo-700 transition">Record Workout</button>
+        </div>
+        <div id="homeWorkoutList" class="space-y-4 mt-12"></div>
+        <div class="mt-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4 text-center">Overall Progress Graph</h2>
+            <select id="exerciseSelect" class="p-3 border border-gray-300 rounded-lg mb-4 block mx-auto w-full sm:w-auto" onchange="renderProgressGraph()">
+                <option value="">Select Exercise</option>
+            </select>
+            <canvas id="progressChart" class="w-full max-h-96 mx-auto"></canvas>
+        </div>
+        <div class="p-8 bg-gray-50 rounded-lg mt-8 text-center">
+            <p class="text-sm text-gray-600">Total workouts: <span id="workoutCount">0</span></p>
+        </div>
+    </div>
+    
+    <div id="trackerPage" class="w-full max-w-4xl bg-white rounded-xl shadow-2xl overflow-hidden hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-700 p-4 sm:p-8 text-white text-center">
+            <h1 class="text-2xl sm:text-4xl font-bold">Gym Tracker</h1>
+            <p class="mt-2 text-indigo-100 text-sm sm:text-base">Record workouts and track progress</p>
+            <button onclick="showHome()" class="mt-4 text-white underline text-sm sm:text-base">Back to Home</button>
+        </div>
+        
+        <div class="p-4 sm:p-8">
+            <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input id="exerciseInput" type="text" placeholder="Exercise name..." class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-base">
+                <input id="setsInput" type="number" placeholder="Sets" class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-base">
+                <input id="repsInput" type="number" placeholder="Reps" class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-base">
+                <input id="weightInput" type="number" placeholder="Weight (kg)" class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-base">
+                <input id="dateInput" type="date" class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 col-span-2 md:col-span-1 text-base">
+                <button onclick="addWorkout()" class="bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition col-span-2 md:col-span-1 text-base">Add Workout</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let workouts = JSON.parse(localStorage.getItem('workouts')) || [];
+        let progressChart;
+
+        function showTracker() {
+            document.getElementById('homePage').classList.add('hidden');
+            document.getElementById('trackerPage').classList.remove('hidden');
+            gsap.from('#trackerPage', {duration: 1, y: 50, opacity: 0, ease: 'power2.out'});
+        }
+        
+        function showHome() {
+            document.getElementById('trackerPage').classList.add('hidden');
+            document.getElementById('homePage').classList.remove('hidden');
+            gsap.from('#homePage', {duration: 1, y: 50, opacity: 0, ease: 'power2.out'});
+            renderWorkouts();
+            updateExerciseSelect();
+        }
+        
+        function addWorkout() {
+            const exercise = document.getElementById('exerciseInput').value.trim();
+            const sets = parseInt(document.getElementById('setsInput').value);
+            const reps = parseInt(document.getElementById('repsInput').value);
+            const weight = parseFloat(document.getElementById('weightInput').value);
+            const date = document.getElementById('dateInput').value;
+            
+            if (exercise && !isNaN(sets) && !isNaN(reps) && !isNaN(weight) && date) {
+                // Check for existing workout for same exercise on same date
+                const existingIndex = workouts.findIndex(
+                    w => w.exercise === exercise && w.date === date
+                );
+                
+                if (existingIndex !== -1) {
+                    // If exists, add set to existing workout
+                    if(!workouts[existingIndex].setDetails) {
+                        workouts[existingIndex].setDetails = [];
+                        // Add initial set if none exists
+                        for(let i=0; i<workouts[existingIndex].sets; i++) {
+                            workouts[existingIndex].setDetails.push({
+                                setNumber: i+1,
+                                reps: workouts[existingIndex].reps,
+                                weight: workouts[existingIndex].weight
+                            });
+                        }
+                    }
+                    // Add new set
+                    workouts[existingIndex].setDetails.push({
+                        setNumber: workouts[existingIndex].setDetails.length + 1,
+                        reps: reps,
+                        weight: weight
+                    });
+                    workouts[existingIndex].sets += sets;
+                } else {
+                    // Otherwise add new workout with single set detail
+                    workouts.push({ 
+                        exercise, 
+                        sets, 
+                        reps, 
+                        weight, 
+                        date,
+                        setDetails: [{
+                            setNumber: 1,
+                            reps: reps,
+                            weight: weight
+                        }]
+                    });
+                }
+                
+                saveWorkouts();
+                clearInputs();
+                showHome();
+            }
+        }
+        
+        function deleteWorkout(index) {
+            workouts.splice(index, 1);
+            saveWorkouts();
+            renderWorkouts();
+            updateExerciseSelect();
+        }
+        
+        function saveWorkouts() {
+            localStorage.setItem('workouts', JSON.stringify(workouts));
+        }
+        
+        function getWeekKey(dateStr) {
+            const date = new Date(dateStr);
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() + 4 - (date.getDay() || 7));
+            const yearStart = new Date(date.getFullYear(), 0, 1);
+            const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+            return `${date.getFullYear()}-W${week.toString().padStart(2, '0')}`;
+        }
+        
+        function renderWorkouts() {
+            const list = document.getElementById('homeWorkoutList');
+            list.innerHTML = '';
+            const sortedWorkouts = [...workouts].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const groups = {};
+            sortedWorkouts.forEach((workout, index) => {
+                const weekKey = getWeekKey(workout.date);
+                if (!groups[weekKey]) groups[weekKey] = [];
+                groups[weekKey].push({ ...workout, originalIndex: index });
+            });
+            
+            Object.keys(groups).sort().reverse().forEach(weekKey => {
+                const uniqueDates = new Set(groups[weekKey].map(w => w.date)).size;
+                const exercises = [...new Set(groups[weekKey].map(w => w.exercise))];
+                const details = document.createElement('details');
+                details.className = 'bg-gray-100 rounded-lg opacity-0';
+                details.innerHTML = `
+                    <summary class="p-4 font-bold text-lg text-indigo-800 cursor-pointer">Week ${weekKey}</summary>
+                    <div class="p-4 pt-0">
+                        <p class="text-gray-700 mb-4">Gym visits this week: ${uniqueDates}</p>
+                        <ul class="space-y-2 mb-4">
+                            ${groups[weekKey].map(w => `
+                                <li class="p-3 bg-white rounded-md shadow">
+                                    <div class="font-medium">${w.exercise} - ${w.date}</div>
+                                <div class="text-gray-600">
+                                    <table class="w-full mt-2">
+                                        <thead>
+                                            <tr class="border-b">
+                                                <th class="text-left py-2">Set</th>
+                                                <th class="text-left py-2">Reps</th>
+                                                <th class="text-left py-2">Weight (kg)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${w.setDetails ? w.setDetails.map(set => `
+                                                <tr>
+                                                    <td class="py-2">${set.setNumber}</td>
+                                                    <td class="py-2">${set.reps}</td>
+                                                    <td class="py-2">${set.weight}</td>
+                                                </tr>
+                                            `).join('') : ''}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                    <button onclick="deleteWorkout(${w.originalIndex})" class="text-red-600 hover:text-red-700 mt-1 font-medium">Delete</button>
+                                </li>
+                            `).join('')}
+                        </ul>
+                        <select class="weekExerciseSelect p-3 border border-gray-300 rounded-lg mb-4 block w-full" data-week="${weekKey}" onchange="renderWeekChart('${weekKey}', this.value)">
+                            <option value="">Select Exercise (or blank for all)</option>
+                            ${exercises.map(ex => `<option value="${ex}">${ex}</option>`).join('')}
+                        </select>
+                        <canvas id="chart-${weekKey}" height="200"></canvas>
+                    </div>
+                `;
+                list.appendChild(details);
+                gsap.to(details, {duration: 0.5, opacity: 1, y: -10, ease: 'power1.out'});
+                renderWeekChart(weekKey, '');
+            });
+            
+            document.getElementById('workoutCount').textContent = workouts.length;
+            renderProgressGraph();
+        }
+        
+        function updateExerciseSelect() {
+            const select = document.getElementById('exerciseSelect');
+            const exercises = [...new Set(workouts.map(w => w.exercise))];
+            select.innerHTML = '<option value="">Select Exercise</option>' + exercises.map(ex => `<option value="${ex}">${ex}</option>`).join('');
+        }
+        
+        function renderWeekChart(weekKey, selectedEx = '') {
+            const group = workouts.filter(w => getWeekKey(w.date) === weekKey).sort((a, b) => new Date(a.date) - new Date(b.date));
+            const uniqueDates = [...new Set(group.map(w => w.date))].sort();
+            let datasets = [];
+            
+            if (selectedEx) {
+                const data = uniqueDates.map(date => {
+                    const dayWorkouts = group.filter(w => w.date === date && w.exercise === selectedEx);
+                    return dayWorkouts.length > 0 ? Math.max(...dayWorkouts.map(w => w.weight)) : null;
+                });
+                datasets.push({
+                    label: selectedEx,
+                    data,
+                    borderColor: 'rgb(99, 102, 241)',
+                    tension: 0.1
+                });
+            } else {
+                const exercises = [...new Set(group.map(w => w.exercise))];
+                const colors = ['rgb(99, 102, 241)', 'rgb(16, 185, 129)', 'rgb(245, 158, 11)', 'rgb(236, 72, 153)', 'rgb(139, 92, 246)'];
+                exercises.forEach((ex, i) => {
+                    const data = uniqueDates.map(date => {
+                        const dayWorkouts = group.filter(w => w.date === date && w.exercise === ex);
+                        return dayWorkouts.length > 0 ? Math.max(...dayWorkouts.map(w => w.weight)) : null;
+                    });
+                    datasets.push({
+                        label: ex,
+                        data,
+                        borderColor: colors[i % colors.length],
+                        tension: 0.1
+                    });
+                });
+            }
+            
+            const ctx = document.getElementById(`chart-${weekKey}`).getContext('2d');
+            if (window[`chart_${weekKey}`]) window[`chart_${weekKey}`].destroy();
+            window[`chart_${weekKey}`] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: uniqueDates, datasets },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
+        
+        function renderProgressGraph() {
+            const select = document.getElementById('exerciseSelect');
+            const selectedExercise = select.value;
+            if (!selectedExercise) return;
+            
+            const filtered = workouts.filter(w => w.exercise === selectedExercise).sort((a, b) => new Date(a.date) - new Date(b.date));
+            const labels = filtered.map(w => w.date);
+            const data = filtered.map(w => w.weight);
+            
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            if (progressChart) progressChart.destroy();
+            progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Weight (kg)',
+                        data: data,
+                        borderColor: 'rgb(99, 102, 241)',
+                        tension: 0.1
+                    }]
+                },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
+        
+        function clearInputs() {
+            document.getElementById('exerciseInput').value = '';
+            document.getElementById('setsInput').value = '';
+            document.getElementById('repsInput').value = '';
+            document.getElementById('weightInput').value = '';
+            document.getElementById('dateInput').value = '';
+        }
+        
+        // Initial animation for home page
+        gsap.from('#homePage', {duration: 1.5, y: 100, opacity: 0, ease: 'power3.out'});
+        showHome(); // Initial render
+    </script>
+</body>
+</html>
+
